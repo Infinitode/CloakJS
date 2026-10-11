@@ -16,21 +16,21 @@ CloakJS is a single-file, dependency-free JavaScript obfuscator for the browser 
 ```
 
 > [!IMPORTANT]
-> **CloakJS is not distributed through npm.** There *is* a package named `cloakjs` on the npm registry, but it is an unrelated AOP/Proxy wrapper library maintained by someone else — it is not this project and it does not contain this obfuscator. Do not install that package expecting CloakJS. Grab [`cloakjs.js`](cloakjs.js) or [`cloakjs.min.js`](cloakjs.min.js) from this repository (or from jsDelivr) instead; the library has no dependencies and no package manifest, so there is nothing to resolve and nothing to build.
+> **CloakJS is not distributed through npm.** There *is* a package named `cloakjs` on the npm registry, but it is an unrelated AOP/Proxy wrapper library ("a small AOP/Proxy/Wrapper library with a fluent interface", currently 1.0.1, maintained by somebody else) — it is not this project and it does not contain this obfuscator. Do not install that package expecting CloakJS. Grab [`cloakjs.js`](cloakjs.js) or [`cloakjs.min.js`](cloakjs.min.js) from this repository (or from jsDelivr) instead; the library has no dependencies and no package manifest, so there is nothing to resolve and nothing to build.
 
 > [!WARNING]
 > Obfuscation makes source **harder to read, not secure**. It cannot protect secrets, credentials, licence keys or security-critical checks that ship to the client, and it does not resist an analyst who can instrument the running page. Everything CloakJS does is reversible by hand or by tooling. Treat it as a speed bump and a deterrent — never as a security boundary.
 
-## What is new in 1.3.0
+## What changed in 1.3.0
 
-- **`extreme` is a real mode now.** It no longer just repeats `high`: it adds identifier escaping, string splitting, decoy string-array entries, maximum flattening and decoy amounts, and a recurring `debugger` trap.
-- **Control-flow flattening reaches inside function bodies**, not just the top level, and can flatten `var`, `if`, `for`, `try`, `switch`, `return` and `throw` statements — not only bare calls.
-- **A self-contained decoder.** Obfuscated output no longer requires `atob`, `Uint8Array` or `TextDecoder`; it implements Base64, a custom alphabet, RC4 and UTF-8 decoding itself, using `TextDecoder` only as a fast path when the host provides one.
-- **Template literals are first class.** Identifiers inside `` `${…}` `` are analysed and renamed, while static templates are encrypted like ordinary strings.
-- **Much broader mangling.** Parameters (including defaults and rest), `catch` bindings, class names, named function expressions and template substitutions are renamed — but only when every occurrence of a spelling provably stays inside a scope that declares it.
-- **New options:** `stringSplitting`, `stringArrayDecoys`, `stringArrayShuffle`, `stringAlphabet`, `stringEncoding`, `identifierEscaping`, `preserveFunctionNames`, `controlFlowThreshold`, `deadCodeAmount`, `debugProtection`(+`Interval`), `wrapInIife`, `disableConsoleOutput`, `seed`.
-- **Typed, validated options.** Unknown names and wrong types throw with a clear message instead of being silently ignored.
-- **Reproducible builds** with `seed`, richer `stats` (including which `techniques` actually ran) and clearer `warnings`.
+- **`extreme` is a real mode now.** In 1.2.0 its options were identical to `high`; it now turns on identifier escaping, codepoint-safe string splitting, decoy string-array entries, maximum flattening and decoy amounts, and a recurring `debugger` trap.
+- **Control-flow flattening reaches inside function bodies** (nested bodies are flattened before the bodies that contain them), with a shuffled `case` layout and decoy cases that can never be selected.
+- **A self-contained decoder.** Generated code no longer depends on `atob`, `Uint8Array` or `TextDecoder`: it ships its own Base64, alphabet-substitution, RC4 and UTF-8 handling and only uses `TextDecoder` as a fast path when the host has one.
+- **Template literals are first class.** Identifiers inside `` `${…}` `` are analysed and renamed, and static templates are encrypted like ordinary strings (tagged templates are left alone).
+- **Much broader, scope-aware mangling.** Parameters (including defaults and rest), `catch` bindings, class names, named function expressions and template substitutions are renamed — but a spelling is only renamed when *every* occurrence lies inside a scope that declares it, so globals owned by other scripts keep working.
+- **New options:** `stringSplitting` (+ `MinLength`, `MaxParts`), `stringArrayShuffle`, `stringArrayDecoys`, `stringEncoding`, `stringAlphabet`, `identifierEscaping`, `preserveFunctionNames`, `controlFlowThreshold`, `deadCodeAmount`, `debugProtection` (+ `Interval`), `wrapInIife`, `disableConsoleOutput`, `compactOutput`, `seed`.
+- **Validated options with types.** A typo like `stringEncrypton` now throws a `TypeError` instead of being silently ignored, and wrong value types are rejected before anything runs.
+- **Reproducible output** via `seed`, richer `stats` (including the `techniques` that were actually applied) and clearer `warnings`.
 
 ## Getting started
 
@@ -58,7 +58,7 @@ console.log(result.warnings);  // anything it refused to do — check these
 const first = CloakJS.obfuscate("var a = 1; console.log(a);", { seed: "build-42" });
 ```
 
-The file is UMD: it works as the global `CloakJS` in a `<script>` tag, as an AMD module, and as a CommonJS module. The **obfuscated** script it produces is self-contained — the generated decoder implements its own Base64, alphabet substitution, RC4 and UTF-8 handling, so no globals, polyfills or helper files are required.
+The file is UMD: it works as the global `CloakJS` in a `<script>` tag, as an AMD module, and as a CommonJS module. The **obfuscated** script it produces is self-contained — the generated decoder implements its own Base64, alphabet substitution, RC4 and UTF-8 handling, so it runs in a bare sandbox with no globals, polyfills or helper files (it will use `TextDecoder`/`Uint8Array` when the host provides them).
 
 ## API
 
@@ -105,7 +105,7 @@ Output is randomized and differs between calls; pass a `seed` when you need repr
 | `high` | yes | – | RC4 + shuffled alphabet | – | yes | yes | yes | yes | – | – | – |
 | `extreme` | yes | yes | RC4 + shuffled alphabet | yes | yes | yes (maximum) | yes (maximum) | yes | yes | – | – |
 
-`extreme` is a genuine mode, not a relabelled `high`: compared to `high` it turns on identifier escaping, string splitting (down to 6-character chunks, up to 5 parts), six decoy entries per string array, six decoy statements per dead-code block, and a recurring anti-debugging timer. `disableConsoleOutput` and `wrapInIife` change observable behaviour, so they are options that no preset enables.
+`extreme` is a genuine mode, not a relabelled `high`: compared to `high` it turns on identifier escaping, string splitting (down to 6-character chunks, up to 5 parts), six decoy entries per string array, the maximum decoy amount, and an anti-debugging timer. `disableConsoleOutput` and `wrapInIife` change observable behaviour, so they are options that no preset enables.
 
 Every preset enables `compactOutput`. A partial options object overrides only the keys you supply:
 
@@ -123,7 +123,7 @@ console.log(result.code, result.stats.techniques);
 | Option | Type | Default (`high`) | What it does |
 | --- | --- | --- | --- |
 | `identifierMangling` | boolean | `true` | Renames declared bindings whose occurrences provably stay inside a scope that declares them. |
-| `identifierEscaping` | boolean | `false` (`true` in `extreme`) | Rewrites identifiers with `\uXXXX` escapes, e.g. `_0x1a2b` becomes `_\u0030\u0078\u0031\u0061\u0032\u0062`. |
+| `identifierEscaping` | boolean | `false` (`true` in `extreme`) | Rewrites identifiers with `\uXXXX` escapes, e.g. `_0x1a2b` becomes `_\u0030\u0078\u0031a2b`; the escapes parse to the same name. |
 | `preserveFunctionNames` | boolean | `false` | Keeps function and class names, so `Function#name` and `constructor.name` stay readable. |
 | `stringEncryption` | boolean | `true` | Moves strings into an encoded array read through a generated decoder. |
 | `stringEncoding` | `"base64"` \| `"rc4"` | `"rc4"` | Cipher applied to each payload. |
@@ -135,7 +135,7 @@ console.log(result.code, result.stats.techniques);
 | `stringSplitMaxParts` | count | `4` (`5` in `extreme`) | Upper bound on chunks per string. |
 | `numberEncoding` | boolean | `true` | Rewrites numeric literals as hex, binary, octal, bitwise, arithmetic or scaled expressions. |
 | `controlFlowFlattening` | boolean | `true` | Moves statement runs into a shuffled `switch` dispatcher, inside function bodies as well as at the top level. |
-| `controlFlowThreshold` | ratio | `1` | Probability of flattening each eligible run (`0` disables it, `1` flattens all of them). |
+| `controlFlowThreshold` | ratio | `1` | Probability of flattening each eligible statement run (`0` disables it, `1` flattens all of them). |
 | `deadCodeInjection` | boolean | `true` | Inserts unreachable decoy blocks, including dispatcher cases that can never be selected. |
 | `deadCodeAmount` | count | `3` (`6` in `extreme`) | Rough number of decoy statements per inserted block. |
 | `opaquePredicates` | boolean | `true` | Generates conditions whose value is computed at obfuscation time and used as guards. |
@@ -149,15 +149,15 @@ console.log(result.code, result.stats.techniques);
 
 ## Techniques
 
-- **Identifier mangling** collects bindings from `var`/`let`/`const`, function declarations, named function expressions, parameter lists (including defaults and rest parameters), `catch (…)` clauses and class names. It renames a spelling only when *every* occurrence lies inside a scope that declares it, which keeps references to globals defined by other scripts working. Property names, object keys, shorthand properties, method and field names, labels, destructuring patterns, module bindings and anything reachable dynamically (`eval`, `with`, string keys such as `obj["name"]`) are left alone. Template substitutions *are* analysed, so `` `${count}` `` is renamed with the rest of the code.
+- **Identifier mangling** collects bindings from `var`/`let`/`const`, function declarations, named function expressions, parameter lists (including defaults and rest parameters), `catch (…)` clauses and class names. A spelling is renamed only when *every* occurrence lies inside a scope that declares it, which keeps references to globals defined in other scripts working. Property names, object keys and shorthand properties, method and field names, labels, destructuring patterns, module bindings and anything reachable dynamically (`eval`, `with`, string keys such as `obj["name"]`) are left alone. Template substitutions *are* analysed, so `` `${count}` `` is renamed with the rest of the code.
 - **Identifier escaping** writes identifiers with unicode escapes. Escapes normalise to the same name, so behaviour is unchanged, but the source stops matching grep patterns.
-- **String encryption** evaluates each eligible literal, encodes its UTF-8 bytes (RC4 with a random per-run key, then Base64), optionally substitutes a shuffled Base64 alphabet and reverses the entry, and stores it in an array that the generated decoder reads through a shuffled index map. Call sites look like `_0x1f3(0x2,41)`, sometimes with decoy arguments. Static template literals are treated like ordinary strings, not touching tagged templates. Directive prologues, object keys, `case` labels, method names and `import`/`export` specifiers are skipped.
+- **String encryption** evaluates each eligible literal, encodes its UTF-8 bytes (RC4 with a random per-run key, then Base64), optionally substitutes a shuffled Base64 alphabet and reverses the entry, and stores it in an array that the generated decoder reads through a shuffled index map. Call sites look like `_0x1f3(0x2,41)`, sometimes with decoy arguments. Static template literals are treated like ordinary strings; tagged templates are skipped. Directive prologues, object keys, `case` labels, method names and `import`/`export` specifiers are skipped too.
 - **String splitting** breaks long strings into codepoint-safe chunks (never inside an emoji or surrogate pair). With encryption on, each chunk becomes its own array entry and the call site becomes a concatenation, so no array entry holds a complete string.
 - **Number encoding** rewrites literals as hex, binary, octal, XOR/OR masks, shifts, `~`, sums, products with remainder, or exact power-of-two scaling. Single-digit literals, BigInts and `Infinity`/`NaN` are left as they are, and floats are only scaled by powers of two so their values stay bit-exact.
-- **Control flow flattening** splits each region (a function body or the top level) into statements and moves runs of statements that provably cannot change hoisting or scoping into `switch` clauses with random labels. Case clauses are emitted in a shuffled layout while a sequence array preserves execution order, and decoy cases are never selected. `let`/`const` declarations, function/class declarations, `do…while` statements, `else`/`catch`/`finally` continuation statements and jumps that would start targeting the generated loop all stay outside the dispatcher. Nested function bodies are flattened before their enclosing bodies.
+- **Control flow flattening** splits each region (a function body or the top level) into statements and moves runs of statements that cannot change hoisting, scoping or jump targets into `switch` clauses with random labels. Case clauses are emitted in a shuffled layout while a sequence array preserves execution order, and decoy cases are never selected. Declarations (`var`/`let`/`const`/`function`/`class`), `do…while` bodies, `else`/`catch`/`finally` continuations and the final top-level statement stay outside the dispatcher, and nested function bodies are flattened before their enclosing bodies.
 - **Opaque predicates** are expressions whose value is evaluated at obfuscation time and verified with `Function`, so a guard that should be true always is. They wrap statements, dispatchers and dead branches.
-- **Dead code injection** adds unreachable blocks that reference real runtime pieces (loops, local helper functions, decoy decoder lookups, array operations) so they cannot be dismissed by pattern alone. Injection points are only chosen after a `;` whose neighbours are not `else`/`while`/`catch`/`finally`, never after `return`/`throw`/`break`/`continue`, and never in a position that would change the script's completion value.
-- **Self-defending prelude** hashes the source text of generated functions through `Function.prototype.toString()` and throws `Error("Unexpected token")` when the text no longer matches — including when a patched `toString` returns `[native code]`. Whitespace is ignored by the hash, so re-indenting the output still runs, but renaming or patching a generated function does not. It covers the generated decoder and its own probe function; it does **not** detect an attacker who disables the check itself.
+- **Dead code injection** adds unreachable blocks that reference real runtime pieces (loops, local helper functions, decoy decoder lookups, array operations) so they cannot be dismissed by pattern alone. Injection points are only chosen after a `;` whose neighbours are not `else`/`while`/`catch`/`finally`, and never in a position that would change the script's completion value.
+- **Self-defending prelude** hashes the source text of generated functions through `Function.prototype.toString()` and throws `Error("Unexpected token")` when the text no longer matches — including when a patched `toString` returns `[native code]`. The hash ignores whitespace, so re-indenting the output still runs, but renaming or patching a generated function does not. It covers the generated decoder and its own probe function; it does **not** detect an attacker who disables the check itself.
 - **Debug protection** installs `setInterval(function(){ … debugger … }, interval)`, guarded by `typeof setInterval`, and calls `.unref()` when the handle supports it so Node.js processes can still exit.
 - **Console silencing** and **IIFE wrapping** are opt-in behaviour changes, described in the tables above.
 
@@ -170,14 +170,14 @@ Read this section before shipping obfuscated output.
 | Code reads `someFunction.name` or `this.constructor.name` | Mangling renames functions and classes, so those strings change. Set `preserveFunctionNames: true` to keep them. |
 | Bindings that are part of a public API | Mangling renames top-level declarations too. Disable `identifierMangling` (or use `low` and check) when other scripts refer to them by name. |
 | Property access through strings, e.g. `obj["count"]` | Every spelling that appears as a property name, object key or string key is left untouched, so such code keeps working. |
-| `eval()`, `with()`, `new Function("… " + localName)` | Mangling and escaping are skipped automatically and a warning is added; the other transforms still run. |
-| `import` / `export` | Module syntax is detected and mangling is skipped with a warning, because `new Function` (the internal parse check) only accepts scripts. Strings in `from` clauses are left untouched. |
-| Output is minified after obfuscation | `selfDefending` throws, because a minifier renames or rewrites generated functions. Re-indenting only (whitespace) is tolerated. Disable `selfDefending` if the output goes through Terser/esbuild/webpack again, or obfuscate *after* minifying. |
+| `eval()`, `with()`, `new Function("… " + someLocal)` | Mangling and escaping are skipped automatically and a warning is added; the other transforms still run. |
+| `import` / `export` | Module syntax is detected and mangling is skipped with a warning, because `new Function` (the internal parse check) only accepts scripts. Strings in `from` clauses are untouched. |
+| Output is minified after obfuscation | `selfDefending` throws, because a minifier renames or rewrites the generated functions. Pure re-indentation (whitespace only) is tolerated. Disable `selfDefending` if the output goes through Terser/esbuild/webpack again, or obfuscate *after* minifying. |
+| Script completion value | The last top-level statement is never moved, wrapped or followed by decoy code, so the value a script evaluates to is preserved — except with `wrapInIife`, which makes it `undefined`. |
 | `debugProtection` in Node.js | A repeating timer is installed. It is unref'ed when possible so the process can still exit, but code that observes timers will see it. |
 | `disableConsoleOutput` | All common `console` methods become no-ops for the whole page/process, not just for your code. |
-| `wrapInIife` | Top-level `var`/`function` declarations and top-level `this` stop leaking to the global object, and the script's completion value becomes `undefined`. |
-| Strict mode | A leading `"use strict";` directive is kept in front of all generated code, and inside the IIFE when `wrapInIife` is used. |
-| Script completion value | The final top-level statement is never moved, wrapped or followed by decoy code, so the value a script evaluates to is preserved (unless `wrapInIife` is on). |
+| `wrapInIife` | Top-level `var`/`function` declarations and top-level `this` stop leaking to the global object, and the completion value becomes `undefined`. |
+| Strict mode | A leading `"use strict";` directive is kept in front of all generated code, and moved inside the IIFE when `wrapInIife` is used. |
 | Heavily minified input | CloakJS is a lexer, not a parser. It preserves anything it does not explicitly rewrite and skips statements it cannot prove safe, but always test the generated code. |
 | Size | Dead code, decoys, flattening and the decoder all add bytes. On a multi-kilobyte file expect roughly 1.0× (`low`), 1.2× (`medium`), 2–4× (`high`) and 4–8× (`extreme`). Small snippets grow much more, because the generated decoder is a fixed cost that does not shrink with the input. |
 
@@ -205,7 +205,7 @@ To regenerate the minified file locally, fetch Terser as a temporary build tool 
 npm exec --yes --package=terser@5.44.0 -- terser cloakjs.js --compress --mangle --comments '/^!/' --output cloakjs.min.js
 ```
 
-On pushes that change `cloakjs.js` or the test suite, [the Ubuntu GitHub Actions workflow](.github/workflows/minify.yml) runs the tests, regenerates `cloakjs.min.js`, verifies that the minified build reproduces the readable build's output for the same seed, and commits the file back to **the same branch** only if it changed. The workflow needs Actions to have permission to write repository contents; branch protection rules may prevent an automated push.
+On pushes that change `cloakjs.js` or the test suite, [the Ubuntu GitHub Actions workflow](.github/workflows/minify.yml) runs the tests, regenerates `cloakjs.min.js`, verifies that the minified build reproduces the readable build's output for the same seed (in both a full sandbox and a bare one), and commits the file back to **the same branch** only if it changed. The workflow needs Actions to have permission to write repository contents; branch protection rules may prevent an automated push.
 
 Contributions and bug reports are welcome via [GitHub issues](https://github.com/Infinitode/CloakJS/issues) and pull requests. When reporting a transform bug, include the input snippet, the preset/options, the warning list and the observed output — that is usually enough to reproduce it.
 
