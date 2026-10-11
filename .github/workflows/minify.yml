@@ -1,0 +1,37 @@
+name: Update minified CloakJS
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - cloakjs.js
+
+permissions:
+  contents: write
+
+jobs:
+  minify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Minify and verify
+        run: |
+          node --test
+          npm exec --yes --package=terser@5.44.0 -- terser cloakjs.js --compress --mangle --comments '/^!/' --output cloakjs.min.js
+          node --check cloakjs.min.js
+          node -e 'const c = require("./cloakjs.min.js"); const source = require("./cloakjs.js"); if (c.VERSION !== source.VERSION || typeof c.obfuscate !== "function") process.exit(1); const vm = require("node:vm"); const logs = []; vm.runInNewContext(c.obfuscate("console.log(\"ok\")", "high"), { console: { log: x => logs.push(x) }, atob, TextDecoder }); if (logs[0] !== "ok") process.exit(1)'
+      - name: Commit minified file if changed
+        run: |
+          git add -- cloakjs.min.js
+          if git diff --cached --quiet; then
+            echo 'Minified file is already up to date.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update minified CloakJS'
+          git push origin "HEAD:${GITHUB_REF}"
