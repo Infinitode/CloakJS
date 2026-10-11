@@ -1,4 +1,4 @@
-name: Update minified CloakJS
+name: Tests and minified build
 
 on:
   push:
@@ -6,6 +6,13 @@ on:
       - '**'
     paths:
       - cloakjs.js
+      - test/cloakjs.test.js
+      - .github/workflows/minify.yml
+  pull_request:
+    paths:
+      - cloakjs.js
+      - test/cloakjs.test.js
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,20 +25,87 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Minify and verify
+
+      - name: Run the test suite
+        run: node --test
+
+      - name: Minify
         run: |
-          node --test
           npm exec --yes --package=terser@5.44.0 -- terser cloakjs.js --compress --mangle --comments '/^!/' --output cloakjs.min.js
           node --check cloakjs.min.js
-          node -e 'const c = require("./cloakjs.min.js"); const source = require("./cloakjs.js"); if (c.VERSION !== source.VERSION || typeof c.obfuscate !== "function") process.exit(1); const vm = require("node:vm"); const logs = []; vm.runInNewContext(c.obfuscate("console.log(\"ok\")", "high"), { console: { log: x => logs.push(x) }, atob, TextDecoder }); if (logs[0] !== "ok") process.exit(1)'
-      - name: Commit minified file if changed
+
+      - name: Verify the minified build
+        run: |
+          cat > "$RUNNER_TEMP/verify-cloakjs.js" <<'VERIFY'
+          const assert = require("node:assert/strict");
+          const vm = require("node:vm");
+          const path = require("node:path");
+          const source = require(path.join(process.cwd(), "cloakjs.js"));
+          const minified = require(path.join(process.cwd(), "cloakjs.min.js"));
+
+          // metadata and API surface
+          assert.equal(minified.VERSION, source.VERSION);
+          assert.equal(minified.NAME, source.NAME);
+          assert.deepEqual(Object.keys(minified.presets), Object.keys(source.presets));
+          assert.equal(minified.techniques.length, source.techniques.length);
+          for (const key of ["obfuscate", "obfuscateWithStats", "measure", "resolveOptions"]) {
+            assert.equal(typeof minified[key], "function", `${key} is missing`);
+          }
+          assert.deepEqual(Object.keys(minified.resolveOptions("extreme")).sort(), Object.keys(source.defaultOptions).sort());
+
+          function evaluate(code, sandbox) {
+            const logs = [];
+            const scope = Object.assign({ console: { log: (value) => logs.push(String(value)) } }, sandbox);
+            vm.runInNewContext(code, scope, { timeout: 5000 });
+            return logs;
+          }
+
+          const program = [
+            'function label(value) { var suffix = "!"; return value + suffix; }',
+            'var list = [1, 2, 3].map(function (v) { return v * 2; });',
+            'console.log(label("ok"), "emoji \u{1F680}", list.join("-"), 21 * 2);'
+          ].join("\n");
+          const expected = evaluate(program, { TextDecoder, atob, Uint8Array });
+
+          for (const preset of ["off", "low", "medium", "high", "extreme"]) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              const result = minified.obfuscateWithStats(program, { seed: `${preset}-${attempt}` });
+              assert.equal(result.stats.seed, `${preset}-${attempt}`);
+              assert.deepEqual(result.warnings, [], `${preset}: ${result.warnings.join("; ")}`);
+              // with the fast decoder path available
+              assert.deepEqual(evaluate(result.code, { TextDecoder, atob, Uint8Array }), expected, preset);
+              // and with no globals at all: the decoder must be self-contained
+              assert.deepEqual(evaluate(result.code, {}), expected, `${preset} (bare sandbox)`);
+            }
+          }
+
+          // the readable and the minified build must generate identical output
+          const options = {
+            seed: "determinism", stringEncryption: true, stringSplitting: true,
+            stringArrayDecoys: 4, controlFlowFlattening: true, identifierEscaping: true
+          };
+          assert.equal(minified.obfuscate(program, options), source.obfuscate(program, options));
+
+          // self-defending output runs, and rejects a patched generated function
+          const guarded = minified.obfuscate(program, { seed: 7 });
+          assert.deepEqual(evaluate(guarded, {}), expected, "guarded build produces the right output");
+          const patched = guarded.replace("String.fromCharCode", "String.fromCharCode2");
+          assert.notEqual(patched, guarded, "the decoder did not contain String.fromCharCode, the tamper check is meaningless");
+          assert.throws(() => evaluate(patched, {}), /Unexpected token/);
+
+          console.log("minified build verified:", minified.VERSION);
+          VERIFY
+          node "$RUNNER_TEMP/verify-cloakjs.js"
+
+      - name: Commit the minified file if it changed
+        if: github.event_name == 'push' && github.ref_type == 'branch'
         run: |
           git add -- cloakjs.min.js
           if git diff --cached --quiet; then
-            echo 'Minified file is already up to date.'
+            echo 'cloakjs.min.js is already up to date.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore: update minified CloakJS'
-          git push origin "HEAD:${GITHUB_REF}"
+          git commit -m 'chore: rebuild cloakjs.min.js'
+          git push origin "HEAD:${{ github.ref_name }}"
